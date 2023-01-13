@@ -1,0 +1,265 @@
+// ATLAS CLOUD DB: mongosh "mongodb+srv://clusterchimichanga.vtb19bm.mongodb.net/myFirstDatabase" --apiVersion 1 --username Chimichanga
+// Password : Chimichanga4985net
+
+//T* Creamos la Base de Datos chimichanga
+
+use("chimichanga");
+
+//T* Creamos y poblamos la colección Usuarios
+
+const cant_usuarios = 10000
+
+db.createCollection("Usuarios")
+
+var bulk = db.Usuarios.initializeUnorderedBulkOp();
+for (var i = 0; i < cant_usuarios; i++){
+    bulk.insert({
+            "nombre" : "Usuario"+i,
+            "mail": "Usuario"+i+"@email.com",
+            "contraseña": "123456789",
+            "promedio": Math.floor(Math.random() * 10) + 1,
+            "poemasPublicados" : "-",                           //! Los usuarios se crean sin poemas publicados
+            "comentariosHechos" : "-"                           //! Los usuarios se crean sin comentarios hechos
+        }
+    )
+}
+bulk.execute()
+
+//T* Creamos y poblamos la colección Poemas
+
+const cant_poemas = 50000
+
+db.createCollection("Poemas");
+
+ubicacion = ["Italia", "Francia", "España", "Estados Unidos", "Peru","Argentina", "Chile", "Australia", "Sudafrica", 
+            "China","Alemania","Portugal","Rusia", "Camerun", "India", "Brasil", "Qatar", "Marruecos", "Japon"]
+
+const tipos = ["romantico", "comedia", "terror", "ciencia ficcion", "educativo"]
+
+var usuarios = db.Usuarios.find()                             //! Guardamos la coleccion Usuarios en la constante usuarios
+
+var bulk = db.Poemas.initializeUnorderedBulkOp();
+
+for (var i = 0; i < cant_poemas; i++) {   
+
+    var dia = Math.floor(Math.random() * 27) + 1
+
+    if (dia < 10) {
+        dia = "0" + String(mes)
+    }
+        
+    var mes = Math.floor(Math.random() * 11) + 1
+
+    if (mes < 10) {
+        mes = "0" + String(mes)
+    }
+    
+    var anio = Math.floor(Math.random() * (7)) + 2015
+    
+    autor = "Usuario" + Math.floor(Math.random() * cant_usuarios)
+    
+    autor_id =  db.Usuarios.find({nombre:autor}).next()._id   
+    
+    bulk.insert(
+        {    
+            "titulo":"titulo "+i, 
+            "contenido":"contenido "+i, 
+            "autor": autor,                                     //? Relacion entre coleccion Poemas y coleccion Usuarios
+            "autor_id" : autor_id ,  
+            "fecha": new Date(anio, mes , dia),
+            "ubicacion": ubicacion[Math.floor(Math.random() * ubicacion.length)],
+            "promedio": Math.floor(Math.random() * 10) + 1,
+            "cant_visualizaciones": Math.floor(Math.random() * cant_usuarios),
+            "tipo": tipos[Math.floor(Math.random() * 5)],
+        }
+    )
+
+    if (i % 700 == 0) {                                         //! Cada vez que tenemos una pila con 700 inserts, los ejecutamos            
+        bulk.execute()                                          //! e inicilizamos de vuelta el bulk  
+        var bulk = db.Poemas.initializeUnorderedBulkOp();
+    }
+}
+bulk.execute()
+
+//T* Creamos y poblamos la colección ComentariosPorPoema
+
+db.createCollection("ComentariosPorPoema");
+
+function comentar(usuarios) {
+
+    comentarios = ["Horrible", "Malisimo", "Muy Malo", "Malo", "No me gusto", "Regular", "Me gusto", "Bueno", "Buenisimo", "Perfecto"]
+
+    cant_comentarios = Math.floor(Math.random() * 50);          //! Limitamos a 50 la cantidad de comentarios que puede tener un poema debido a 
+                                                                //! la cantidad de memoria que tenemos en Atlas Cloud (500 MB)
+    list_comentarios = []
+    
+    list_usuarios = []
+
+    for (var i = 0; i < cant_usuarios; i++) {                   //! Quedaria list_usuarios = [Usuario0, Usuario1, ... , Usuario9999]
+        list_usuarios.push("Usuario"+i)
+    }
+
+    if (Math.floor(Math.random() * 2) == 1 ) {                  //! Si toca 1 ese poema puede tener hasta 50 comentarios, si toca 0 no tendrá comentarios
+
+        for (var i = 0; i < cant_comentarios; i++) {   
+
+            indice_list_usuarios = Math.floor(Math.random() * list_usuarios.length)     
+            usuario_id = usuarios[indice_list_usuarios]._id                             
+            usuario = usuarios[indice_list_usuarios].nombre     
+            list_usuarios.splice(indice_list_usuarios,1)        //! Ya que un usuario puede comentar una sola vez un poema en particular. 
+            puntaje = Math.floor(Math.random() * 10) + 1
+
+            dict_comentario = {};
+            dict_comentario["puntaje"] = puntaje;
+            dict_comentario["texto"] = comentarios[puntaje-1];
+            dict_comentario["usuario"] = usuario;               //? Relacion entre coleccion ComentariosPorPoema y coleccion Usuarios
+            dict_comentario["usuario_id"] = usuario_id;
+            list_comentarios.push(dict_comentario);       
+        }
+    }
+    return list_comentarios;                                    //! La funcion devuelve una lista de documentos, donde cada documento es un diccionario 
+}                                                               //! Con puntaje, texto, usuario y usuario_id
+
+
+var poemas = db.Poemas.find()                                 //! Guardamos la coleccion Poemas en la constante poemas
+var usuarios = db.Usuarios.find().toArray()                     //! Guardamos la coleccion Usuarios en forma de Array para que en la funcion comentar
+                                                                //! podamos acceder al _id de c/usuario mediante indices del Array
+var bulk = db.ComentariosPorPoema.initializeUnorderedBulkOp();
+
+for (var i = 0; i < cant_poemas; i++) {
+
+    poema = poemas.next()
+    poema_titulo = poema.titulo                                 //! Obtenemos el titulo del documento de la coleccion Poemas que estamos recorriendo
+    poema_id = poema._id                                        //! Obtenemos el _id del documento de la coleccion Poemas que estamos recorriendo
+
+    bulk.insert(
+            {                                                   //? Relacion entre coleccion ComentariosPorPoema y coleccion Poemas 
+                "poema": poema_titulo,
+                "poema_id": poema_id,
+                "comentarios": comentar(usuarios),
+            }
+        )
+
+    if (i % 700 == 0) {
+        bulk.execute()
+        var bulk = db.ComentariosPorPoema.initializeUnorderedBulkOp();
+    }
+}
+bulk.execute()
+
+//T* Creamos y poblamos la colección Tipo
+
+db.createCollection("Tipo");
+                                                                //! Funciones que son llamadas para poblar la coleccion
+
+function rellenar_top(genero, orden) {                                                
+    var tops10 = (db.Poemas.aggregate([
+                {$match : { tipo : genero }},
+                {$sort: {promedio:orden}},
+                {$project:{ titulo : 1 , promedio : 1 , _id: 0 }}
+            ]
+        ).pretty()).toArray()
+    return tops10;
+}
+
+function rellenar_virales(genero) {
+    var virales = (db.Poemas.aggregate([
+                {$match : { tipo : genero }},
+                {$sort: {cant_visualizaciones:-1}},
+                {$project:{ titulo : 1 , cant_visualizaciones: 1 , _id: 0 }}
+            ]
+        ).pretty()).toArray()
+    return virales;
+}
+
+
+function rellenar_recientes(genero) {
+    var recientes = (db.Poemas.aggregate([
+                {$match : { tipo : genero }},
+                {$sort: {fecha:-1}},
+                {$project:{ titulo : 1 , fecha : 1, _id: 0 }}
+            ]).pretty()).toArray()
+            
+    return recientes;
+}
+
+
+function rellenar_latinos(genero) {
+    var latinos = (db.Poemas.aggregate([
+                {$match : { tipo : genero }},
+                {$match : { ubicacion : { $in:["Argentina", "Chile", "Peru", "Brasil"] }}},
+                {$sort: {ubicacion:1}},
+                {$project:{ titulo : 1 , ubicacion : 1, _id: 0 }}
+            ]).pretty()).toArray()
+    return latinos;
+}
+
+const generos = ["romantico", "comedia", "terror", "ciencia ficcion", "educativo"]  
+
+for (var i = 0; i < generos.length; i++) {
+    db.Tipo.insert(
+        {
+            "genero": generos[i],
+            "top": rellenar_top(generos[i], -1), 
+            "not_top": rellenar_top(generos[i], 1),
+            "virales": rellenar_virales(generos[i]),
+            "recientes": rellenar_recientes(generos[i]),
+            "latinos":rellenar_latinos(generos[i]),
+        }
+    )
+}
+
+//T* Actualizamos la colección Usuarios
+
+//T* Primero actualizamos el campo poemasPublicados
+
+var usuarios = db.Usuarios.find({}).toArray()             
+var poemas = db.Poemas.find()
+dict = {}
+for (var i=0; i< usuarios.length; i++) {                    //! Quedaria {636fa9d42e43904e108448d6: 0, 636fa9d42e43904e108448d7: 0 , ...}
+    dict[usuarios[i]._id] = 0   
+}
+                                            
+while (poemas.hasNext()) {                                  //! Se fija el autor_id del poema e incrementa el valor de ese autor_id en el diccionario.
+    autor = poemas.next().autor_id                          //! Quedaria {636fa9d42e43904e108448d6: 4, 636fa9d42e43904e108448d7: 2 , ...}        
+    dict[autor] = dict[autor] + 1   
+}
+
+var bulk = db.Usuarios.initializeUnorderedBulkOp();
+for (var i=0; i< usuarios.length; i++) {                                                                //! A cada usuario le pone en poemasPublicados 
+    bulk.find({_id: usuarios[i]._id}).update( {$set: { poemasPublicados: dict[usuarios[i]._id] }})      //! su respectivo valor del diccionario                                                                            
+    if (i % 700 == 0) {                 
+        bulk.execute()
+        var bulk = db.Usuarios.initializeUnorderedBulkOp();
+    } 
+}
+bulk.execute()
+
+
+//T* Ahora actualizamos el campo comentariosHechos
+
+var usuarios = db.Usuarios.find({}).toArray()
+var comentariosPorPoema = db.ComentariosPorPoema.find()
+dict = {}
+
+for (var i=0; i< usuarios.length; i++) {
+    dict[usuarios[i]._id] = 0    
+}
+
+while (comentariosPorPoema.hasNext()) {
+    arraycomentarios = comentariosPorPoema.next().comentarios
+    for (var i=0; i< arraycomentarios.length; i++ ) {
+        usuario = arraycomentarios[i].usuario_id
+        dict[usuario] = dict[usuario] + 1   
+    }   
+}
+
+var bulk = db.Usuarios.initializeUnorderedBulkOp();
+for (var i=0; i< usuarios.length; i++) {
+    bulk.find({_id: usuarios[i]._id}).update( {$set: { comentariosHechos: dict[usuarios[i]._id] }})
+    if (i % 700 == 0) {
+        bulk.execute()
+        var bulk = db.Usuarios.initializeUnorderedBulkOp();
+    } 
+}
+bulk.execute()
